@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+*.dll
+*.dylib
+
+# Virtual environment
+myenv/
+venv/
+env/
+
+# Data and model checkpoints
+data/
+checkpoints/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs and debug files
+logs/
+*.log
+debug.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python package-related
+*.egg-info/
+dist/
+build/
+
+# Environment files
+*.env
+.envrc
