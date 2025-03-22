@@ -34,3 +34,6 @@ build/
 # Environment files
 *.env
 .envrc
+
+#testing files
+src/test.py
