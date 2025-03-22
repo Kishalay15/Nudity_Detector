@@ -91,13 +91,18 @@ class Trainer:
     def train(self, epochs=30):
         for epoch in range(epochs):
             print(f"\nEpoch {epoch+1}/{epochs}")
+
+            # Training Phase
             train_metrics = self._run_epoch(self.loaders["train"])
             val_metrics = self._run_epoch(self.loaders["val"], training=False)
             self.scheduler.step()
 
-            print(f"Train Accuracy: {train_metrics['accuracy'] * 100:.2f}%")
-            print(f"Validation Accuracy: {val_metrics['accuracy'] * 100:.2f}%")
+            print(f"Train Accuracy: {train_metrics['accuracy'] * 100:.2f}% | F1 Score: {train_metrics['f1']:.2f}")
+            print(f"Validation Accuracy: {val_metrics['accuracy'] * 100:.2f}% | F1 Score: {val_metrics['f1']:.2f}")
+            print("Validation Confusion Matrix:")
+            print(val_metrics["cm"])
 
+            # Save best model based on validation F1 score
             if val_metrics["f1"] > self.best_f1:
                 self.best_f1 = val_metrics["f1"]
                 torch.save(self.model.state_dict(), f"checkpoints/best_model_epoch{epoch}.pth")
@@ -109,21 +114,24 @@ class Trainer:
                 print(f"Early stopping at epoch {epoch+1}")
                 break
 
+        # Load the best model
         import glob
-
         best_model_files = sorted(glob.glob("checkpoints/best_model_epoch*.pth"))
         if best_model_files:
             best_model_path = best_model_files[-1]
-            print(f"Loading best model from {best_model_path}")
+            print(f"\nLoading best model from {best_model_path}")
             self.model.load_state_dict(torch.load(best_model_path))
         else:
             print("No model checkpoint found!")
 
+        # Final Test Phase
         test_metrics = self._run_epoch(self.loaders["test"], training=False)
         print("\nFinal Test Results:")
-        print(f"Macro F1: {test_metrics['f1']:.2f}")
-        print("Confusion Matrix:")
+        print(f"Test Accuracy: {test_metrics['accuracy'] * 100:.2f}%")
+        print(f"Test Macro F1 Score: {test_metrics['f1']:.2f}")
+        print("Test Confusion Matrix:")
         print(test_metrics["cm"])
+
 
 
 if __name__ == "__main__":
