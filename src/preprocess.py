@@ -1,90 +1,74 @@
 import os
 import pandas as pd
+from torchvision import transforms
+from torch.utils.data import DataLoader, Dataset
 from PIL import Image
-import numpy as np
-import torch
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
-import torchvision.transforms as transforms
-
-# Base and strong augmentation definitions
-base_transforms = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-])
-
-strong_aug_transforms = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(15),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-    transforms.RandomAffine(degrees=10, translate=(0.1, 0.1)),
-    transforms.ToTensor(),
-])
-
-# Class-specific transform mapping
-transform_dict = {
-    0: base_transforms,        # regular
-    1: strong_aug_transforms,  # semi-nude
-    2: strong_aug_transforms,  # full-nude
-}
 
 class CustomDataset(Dataset):
-    def __init__(self, csv_file, root_dir, transform=transform_dict):
-        self.df = pd.read_csv(csv_file)
-
-        # Map string labels to integers
-        label_mapping = {
-            'regular': 0,
-            'semi-nudity': 1,
-            'full-nudity': 2
-        }
-        self.df['label'] = self.df['label'].map(label_mapping)
-
-        self.root_dir = root_dir
-        self.transform = transform
+    def __init__(self, df, img_dir, transform_dict):
+        self.df = df.reset_index(drop=True)
+        self.img_dir = img_dir
+        self.transform_dict = transform_dict
+        self.label_mapping = {'regular': 0, 'semi-nudity': 1, 'full-nudity': 2}
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
-        img_name = self.df.iloc[idx]["image"]
-        img_path = os.path.join(self.root_dir, img_name)
+        row = self.df.iloc[idx]
+        image_name = row['image']
+        label_str = row['label']  # Still string here
 
-        image = Image.open(img_path).convert("RGB")
-        label = self.df.iloc[idx]["label"]
+        img_path = os.path.join(self.img_dir, image_name)
+        img = Image.open(img_path).convert('RGB')
 
-        if self.transform:
-            image = self.transform[label](image)  # Class-specific transform
+        transform = self.transform_dict[label_str]  # Uses string label
+        img = transform(img)
 
-        return image, label
+        label = self.label_mapping[label_str]  # Convert to integer class
+        return img, label
 
+def create_loaders(batch_size=32, num_workers=2):
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    img_dir = os.path.join(data_dir, "train")  # Path to images
 
-def create_loaders(batch_size=32):
-    base_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+    df = pd.read_csv(os.path.join(data_dir, "train_labels.csv"))
 
-    train_csv = os.path.join(base_path, "train_labels.csv")
-    val_csv = os.path.join(base_path, "val_labels1.csv")
-    test_csv = os.path.join(base_path, "test_labels.csv")
+    # Split before label mapping
+    train_df = df.sample(frac=0.8, random_state=42)
+    temp_df = df.drop(train_df.index)
+    val_df = temp_df.sample(frac=0.5, random_state=42)
+    test_df = temp_df.drop(val_df.index)
 
-    train_root = os.path.join(base_path, "train")
-    val_root = os.path.join(base_path, "validate")
-    test_root = os.path.join(base_path, "test")
+    # Class-based Augmentations using string labels
+    transform_dict = {
+        'regular': transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
+            transforms.RandomRotation(20),
+            transforms.ToTensor(),
+        ]),
+        'semi-nudity': transforms.Compose([
+            transforms.Resize((256, 256)),
+            transforms.RandomCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+        ]),
+        'full-nudity': transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+        ]),
+    }
 
-    train_dataset = CustomDataset(csv_file=train_csv, root_dir=train_root, transform=transform_dict)
-    val_dataset = CustomDataset(csv_file=val_csv, root_dir=val_root, transform=transform_dict)
-    test_dataset = CustomDataset(csv_file=test_csv, root_dir=test_root, transform=transform_dict)
+    # Datasets
+    train_dataset = CustomDataset(train_df, img_dir, transform_dict)
+    val_dataset = CustomDataset(val_df, img_dir, transform_dict)
+    test_dataset = CustomDataset(test_df, img_dir, transform_dict)
 
-    # Compute class weights for WeightedRandomSampler
-    labels = train_dataset.df["label"].values  # Already int from CustomDataset
-    class_counts = np.bincount(labels)
-    class_weights = 1.0 / class_counts
-    sample_weights = class_weights[labels]
-
-    sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+    # Dataloaders
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return {"train": train_loader, "val": val_loader, "test": test_loader}
-

@@ -12,12 +12,34 @@ sys.path.insert(0, PROJECT_ROOT)
 
 class Trainer:
     def __init__(self):
+        import pandas as pd
         from src.preprocess import create_loaders
         from src.build_model import get_model
 
         self.loaders = create_loaders()
-        self.model, self.criterion, self.device = get_model()
+        self.model, _, self.device = get_model()
 
+        # Load train_labels.csv to compute class weights
+        train_csv_path = os.path.join(PROJECT_ROOT, "data", "train_labels.csv")
+        df = pd.read_csv(train_csv_path)
+
+        # Map labels to integers
+        label_mapping = {'regular': 0, 'semi-nudity': 1, 'full-nudity': 2}
+        df['label'] = df['label'].map(label_mapping)
+
+        # Compute class counts
+        label_counts = df['label'].value_counts().sort_index()
+        total_samples = label_counts.sum()
+
+        # Compute alpha weights
+        class_weights = total_samples / (len(label_counts) * label_counts)
+        alpha_weights = torch.tensor(class_weights.tolist(), dtype=torch.float)
+        print(f"Alpha Weights for Loss Function: {alpha_weights}")
+
+        # Loss function with class weights
+        self.criterion = torch.nn.CrossEntropyLoss(weight=alpha_weights.to(self.device))
+
+        # Optimizer and Scheduler
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(), lr=3e-4, weight_decay=0.01
         )
