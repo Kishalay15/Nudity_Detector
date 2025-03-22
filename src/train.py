@@ -60,15 +60,18 @@ class Trainer:
                 outputs = self.model(inputs)
 
                 if mixup_applied:
-                    # Compute soft cross-entropy manually
+                    # Use soft labels from Mixup for manual CE
                     loss = -(soft_labels * F.log_softmax(outputs, dim=1)).sum(dim=1).mean()
                 else:
-                    loss = self.criterion(outputs, labels)  # Use FocalLoss here
+                    # Hard labels → FocalLoss
+                    loss = self.criterion(outputs, labels)
 
                 if training:
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                     self.optimizer.step()
+
+
 
                 total_loss += loss.item()
                 preds = torch.argmax(outputs, dim=1)
@@ -99,8 +102,6 @@ class Trainer:
 
             print(f"Train Accuracy: {train_metrics['accuracy'] * 100:.2f}% | F1 Score: {train_metrics['f1']:.2f}")
             print(f"Validation Accuracy: {val_metrics['accuracy'] * 100:.2f}% | F1 Score: {val_metrics['f1']:.2f}")
-            print("Validation Confusion Matrix:")
-            print(val_metrics["cm"])
 
             # Save best model based on validation F1 score
             if val_metrics["f1"] > self.best_f1:

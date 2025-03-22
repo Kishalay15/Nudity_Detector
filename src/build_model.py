@@ -5,6 +5,8 @@ import pandas as pd
 from collections import Counter
 import os
 
+base_path = os.path.dirname(os.path.dirname(__file__))
+
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2):
         super().__init__()
@@ -19,6 +21,30 @@ class FocalLoss(nn.Module):
         if self.alpha is not None:
             loss = self.alpha[targets] * loss
         return loss.mean()
+
+# build_model.py (add this class below FocalLoss)
+
+class SoftFocalLoss(nn.Module):
+    def __init__(self, alpha=None, gamma=2):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, inputs, soft_targets):
+        """
+        inputs: logits (batch_size, num_classes)
+        soft_targets: probabilities (batch_size, num_classes)
+        """
+        log_probs = F.log_softmax(inputs, dim=1)
+        probs = torch.exp(log_probs)
+
+        focal_weight = (1 - probs) ** self.gamma
+        loss = -soft_targets * focal_weight * log_probs
+
+        if self.alpha is not None:
+            loss = self.alpha.unsqueeze(0) * loss  # broadcast alpha across batch
+
+        return loss.sum(dim=1).mean()
 
 class CustomResNet(nn.Module):
     def __init__(self, num_classes=3):
@@ -44,32 +70,34 @@ class CustomResNet(nn.Module):
         return self.model(x)
 
 def compute_alpha_from_csv(csv_path):
-    df = pd.read_csv(csv_path)
+    full_path = os.path.join(base_path, "data", csv_path)
+    df = pd.read_csv(full_path)
     class_map = {'regular': 0, 'semi-nudity': 1, 'full-nudity': 2}
-    labels = df['label'].map(class_map)
+    labels = df['label'].map(class_map).values
     counts = Counter(labels)
     total = sum(counts.values())
 
-    # Compute inverse frequency
-    alpha = [counts.get(i, 1) / total for i in range(3)]  # Avoid zero counts
-    alpha = [1.0 / a for a in alpha]  # Inverse
+    # Inverse class frequency
+    alpha = [counts.get(i, 1) / total for i in range(3)]
+    alpha = [1.0 / a for a in alpha]  # Inverse frequency
     alpha = torch.tensor(alpha, dtype=torch.float32)
 
-    # Optional: boost regular class weight
-    alpha[0] *= 1.5  # Optional boost to ‘regular’ class
+    # Optional: Boost 'regular' class if needed
+    alpha[0] *= 1.2  # Adjust boost factor as needed
 
-    # Normalize
+    # Normalize weights to sum = 1
     alpha = alpha / alpha.sum()
-    print("Alpha weights:", alpha.cpu().numpy())
+    print("Dynamic Alpha weights:", alpha.cpu().numpy())
     return alpha
 
 def get_model(num_classes=3):
     model = CustomResNet(num_classes)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Compute alpha from training CSV dynamically
-    csv_path = os.path.join(os.path.dirname(__file__), "..", "data", "train_labels.csv")
-    alpha = compute_alpha_from_csv(csv_path).to(device)
+    alpha = compute_alpha_from_csv("train_labels.csv").to(device)
 
-    criterion = FocalLoss(alpha=alpha).to(device)
-    return model.to(device), criterion, device
+    criterion_hard = FocalLoss(alpha=alpha).to(device)
+    criterion_soft = SoftFocalLoss(alpha=alpha).to(device)
+
+    return model.to(device), criterion_hard, device
+
