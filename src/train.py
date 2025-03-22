@@ -27,14 +27,19 @@ class Trainer:
         self.patience = 5
         os.makedirs("checkpoints", exist_ok=True)
 
+    # One-hot encoding needed
     def _mixup(self, inputs, labels, alpha=0.2):
-        """Perform Mixup Augmentation"""
+        """Mixup with One-Hot Soft Labels"""
         lam = torch.distributions.Beta(alpha, alpha).sample().item()
         index = torch.randperm(inputs.size(0)).to(self.device)
 
         mixed_inputs = lam * inputs + (1 - lam) * inputs[index]
-        mixed_labels = lam * labels + (1 - lam) * labels[index]
-        return mixed_inputs, mixed_labels.to(torch.long)  # ✅ Ensure labels remain long
+
+        # One-hot encode labels → soft label mix
+        labels_onehot = F.one_hot(labels, num_classes=3).float()
+        mixed_labels = lam * labels_onehot + (1 - lam) * labels_onehot[index]
+        return mixed_inputs, mixed_labels  # Return soft labels
+
 
     def _run_epoch(self, loader, training=True):
         self.model.train(training)
@@ -44,14 +49,21 @@ class Trainer:
 
         with torch.set_grad_enabled(training):
             for inputs, labels in tqdm(loader, desc="Training" if training else "Validating"):
-                inputs, labels = inputs.to(self.device), labels.to(self.device, dtype=torch.long)  # ✅ Ensure labels are long
+                inputs, labels = inputs.to(self.device), labels.to(self.device, dtype=torch.long)
 
-                if training and torch.rand(1).item() < mixup_prob:  # Apply Mixup 50% of the time
-                    inputs, labels = self._mixup(inputs, labels)
+                mixup_applied = False
+                if training and torch.rand(1).item() < mixup_prob:
+                    inputs, soft_labels = self._mixup(inputs, labels)
+                    mixup_applied = True
 
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs)
-                loss = self.criterion(outputs, labels)
+
+                if mixup_applied:
+                    # Compute soft cross-entropy manually
+                    loss = -(soft_labels * F.log_softmax(outputs, dim=1)).sum(dim=1).mean()
+                else:
+                    loss = self.criterion(outputs, labels)  # Use FocalLoss here
 
                 if training:
                     loss.backward()
@@ -63,8 +75,11 @@ class Trainer:
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
 
+        accuracy = sum(1 for x, y in zip(all_preds, all_labels) if x == y) / len(all_labels)
+
         return {
             "loss": total_loss / len(loader),
+            "accuracy": accuracy,
             "report": classification_report(
                 all_labels, all_preds, target_names=["regular", "semi-nude", "full-nude"], output_dict=True, zero_division=0
             ),
@@ -72,12 +87,16 @@ class Trainer:
             "cm": confusion_matrix(all_labels, all_preds),
         }
 
+
     def train(self, epochs=30):
         for epoch in range(epochs):
             print(f"\nEpoch {epoch+1}/{epochs}")
             train_metrics = self._run_epoch(self.loaders["train"])
             val_metrics = self._run_epoch(self.loaders["val"], training=False)
             self.scheduler.step()
+
+            print(f"Train Accuracy: {train_metrics['accuracy'] * 100:.2f}%")
+            print(f"Validation Accuracy: {val_metrics['accuracy'] * 100:.2f}%")
 
             if val_metrics["f1"] > self.best_f1:
                 self.best_f1 = val_metrics["f1"]

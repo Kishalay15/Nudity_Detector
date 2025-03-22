@@ -68,11 +68,20 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         idx = self.samples[idx]
         img_path = os.path.join(self.img_dir, self.df.iloc[idx, 0])
-        label = self.class_map[self.df.iloc[idx, 1]]
+        label_str = self.df.iloc[idx, 1]
+        label = self.class_map[label_str]
         try:
             with Image.open(img_path) as img:
                 img = img.convert("RGB")
-                img = get_transform(self.is_train)(img)
+                transform = get_transform(self.is_train)
+
+                img = transform(img)
+
+                # Extra augmentation for minority class 'regular'
+                if self.is_train and label_str == 'regular':
+                    extra_jitter = transforms.ColorJitter(brightness=0.4, contrast=0.4)
+                    img = extra_jitter(img)
+
             return img, label
         except Exception as e:
             print(f"Error loading image: {img_path} - {e}")
@@ -92,11 +101,21 @@ def create_loaders():
         "test": ImageDataset(f"{DATA_DIR}/test_labels.csv", f"{DATA_DIR}/test", is_train=False),
     }
 
-    weights = [
-        datasets["train"].class_weights[datasets["train"].class_map[datasets["train"].df.iloc[idx, 1]]]
-        for idx in datasets["train"].samples
-    ]
-    sampler = WeightedRandomSampler(weights, len(weights), replacement=True)
+    class_weights = datasets["train"].class_weights
+    weights = [class_weights[datasets["train"].class_map[datasets["train"].df.iloc[idx, 1]]]
+               for idx in datasets["train"].samples]
+
+    # Amplify weight for 'regular' class
+    amplified_weights = []
+    for i, idx in enumerate(datasets["train"].samples):
+        label = datasets["train"].df.iloc[idx, 1]
+        weight = weights[i]
+        if label == 'regular':
+            weight *= 4  # ⬅️ Amplify oversampling for 'regular'
+        amplified_weights.append(weight)
+
+    sampler = WeightedRandomSampler(amplified_weights, len(amplified_weights), replacement=True)
+
 
     return {
     "train": DataLoader(datasets["train"], batch_size=32, sampler=sampler, collate_fn=collate_fn, num_workers=4, drop_last=True),
