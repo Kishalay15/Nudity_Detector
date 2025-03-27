@@ -17,30 +17,36 @@ class CustomDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         image_name = row['image']
-        label_str = row['label']  # Still string here
+        label_str = row['label']
 
         img_path = os.path.join(self.img_dir, image_name)
         img = Image.open(img_path).convert('RGB')
 
-        transform = self.transform_dict[label_str]  # Uses string label
+        transform = self.transform_dict[label_str]
         img = transform(img)
 
-        label = self.label_mapping[label_str]  # Convert to integer class
+        label = self.label_mapping[label_str]
         return img, label
 
 def create_loaders(batch_size=32, num_workers=2):
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
-    img_dir = os.path.join(data_dir, "train")  # Path to images
 
-    df = pd.read_csv(os.path.join(data_dir, "train_labels.csv"))
+    # CSV Paths
+    train_csv = os.path.join(data_dir, "train_labels.csv")
+    val_csv = os.path.join(data_dir, "val_labels1.csv")
+    test_csv = os.path.join(data_dir, "test_labels.csv")
 
-    # Split before label mapping
-    train_df = df.sample(frac=0.8, random_state=42)
-    temp_df = df.drop(train_df.index)
-    val_df = temp_df.sample(frac=0.5, random_state=42)
-    test_df = temp_df.drop(val_df.index)
+    # Image dirs
+    train_img_dir = os.path.join(data_dir, "train")
+    val_img_dir = os.path.join(data_dir, "validate")
+    test_img_dir = os.path.join(data_dir, "test")
 
-    # Class-based Augmentations using string labels
+    # Read CSVs
+    train_df = pd.read_csv(train_csv)
+    val_df = pd.read_csv(val_csv)
+    test_df = pd.read_csv(test_csv)
+
+    # Class-based Augmentations
     transform_dict = {
         'regular': transforms.Compose([
             transforms.RandomResizedCrop(224),
@@ -62,9 +68,9 @@ def create_loaders(batch_size=32, num_workers=2):
     }
 
     # Datasets
-    train_dataset = CustomDataset(train_df, img_dir, transform_dict)
-    val_dataset = CustomDataset(val_df, img_dir, transform_dict)
-    test_dataset = CustomDataset(test_df, img_dir, transform_dict)
+    train_dataset = CustomDataset(train_df, train_img_dir, transform_dict)
+    val_dataset = CustomDataset(val_df, val_img_dir, transform_dict)
+    test_dataset = CustomDataset(test_df, test_img_dir, transform_dict)
 
     # Dataloaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
