@@ -1,4 +1,5 @@
 import torch
+import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, f1_score, confusion_matrix
 from tqdm import tqdm
 import sys
@@ -19,7 +20,6 @@ class Trainer:
         self.loaders = create_loaders()
         self.model, self.criterion_hard, self.criterion_soft, self.device = get_model()
 
-        # Optimizer & Scheduler
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(), lr=3e-4, weight_decay=0.01
         )
@@ -94,7 +94,6 @@ class Trainer:
             print(f"Train Acc: {train_metrics['accuracy']*100:.2f}% | F1: {train_metrics['f1']:.3f}")
             print(f"Val   Acc: {val_metrics['accuracy']*100:.2f}% | F1: {val_metrics['f1']:.3f}")
 
-            # Checkpoint
             if val_metrics["f1"] > self.best_f1:
                 self.best_f1 = val_metrics["f1"]
                 torch.save(self.model.state_dict(), "checkpoints/best_model.pth")
@@ -108,7 +107,6 @@ class Trainer:
                 print(f"🛑 Early stopping at epoch {epoch+1}")
                 break
 
-        # Load best model
         best_model_path = "checkpoints/best_model.pth"
         if os.path.exists(best_model_path):
             print(f"\nLoading best model from {best_model_path}")
@@ -116,13 +114,35 @@ class Trainer:
         else:
             print("No model checkpoint found!")
 
-        # Final Test
         test_metrics = self._run_epoch(self.loaders["test"], training=False)
         print("\n📄 Final Test Results:")
         print(f"Test Acc: {test_metrics['accuracy']*100:.2f}%")
         print(f"Test F1 : {test_metrics['f1']:.3f}")
         print("Confusion Matrix:")
         print(test_metrics["cm"])
+
+        self._plot_test_metrics(test_metrics)
+
+    def _plot_test_metrics(self, test_metrics):
+        plt.figure(figsize=(6, 4))
+        classes = ["regular", "semi-nude", "full-nude"]
+        cm = test_metrics["cm"]
+
+        plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+        plt.title("Test Confusion Matrix")
+        plt.colorbar()
+        tick_marks = range(len(classes))
+        plt.xticks(tick_marks, classes, rotation=45)
+        plt.yticks(tick_marks, classes)
+
+        for i in range(len(classes)):
+            for j in range(len(classes)):
+                plt.text(j, i, cm[i, j], horizontalalignment="center", color="white" if cm[i, j] > cm.max() / 2. else "black")
+
+        plt.ylabel("True Label")
+        plt.xlabel("Predicted Label")
+        plt.tight_layout()
+        plt.show()
 
 
 if __name__ == "__main__":
