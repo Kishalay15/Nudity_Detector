@@ -49,17 +49,15 @@ class HybridResNetSwin(nn.Module):
 
         # Pretrained ResNet-50
         self.resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-        self.resnet = nn.Sequential(*list(self.resnet.children())[:-1])  # Remove FC layer
+        self.resnet = nn.Sequential(*list(self.resnet.children())[:-1])
 
         # Pretrained Swin Transformer
         self.swin = models.swin_v2_t(weights=models.Swin_V2_T_Weights.IMAGENET1K_V1)
         self.swin.head = nn.Identity()
 
-        # Feature dims
         resnet_out_dim = 2048
         swin_out_dim = 768
 
-        # Classifier
         self.classifier = nn.Sequential(
             nn.Linear(resnet_out_dim + swin_out_dim, 512),
             nn.ReLU(),
@@ -86,7 +84,7 @@ def compute_alpha_from_csv(csv_path):
     alpha = [1.0 / a for a in alpha]
     alpha = torch.tensor(alpha, dtype=torch.float32)
 
-    alpha[0] *= 1.2  # Optional boost
+    alpha[0] *= 1.2
     alpha = alpha / alpha.sum()
 
     print("Dynamic Alpha weights:", alpha.cpu().numpy())

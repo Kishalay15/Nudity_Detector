@@ -31,22 +31,18 @@ class CustomDataset(Dataset):
 def create_loaders(batch_size=32, num_workers=2):
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
 
-    # CSV Paths
     train_csv = os.path.join(data_dir, "train_labels.csv")
     val_csv = os.path.join(data_dir, "val_labels1.csv")
     test_csv = os.path.join(data_dir, "test_labels.csv")
 
-    # Image dirs
     train_img_dir = os.path.join(data_dir, "train")
     val_img_dir = os.path.join(data_dir, "validate")
     test_img_dir = os.path.join(data_dir, "test")
 
-    # Read CSVs
     train_df = pd.read_csv(train_csv)
     val_df = pd.read_csv(val_csv)
     test_df = pd.read_csv(test_csv)
 
-    # Class-based Augmentations
     transform_dict = {
         'regular': transforms.Compose([
             transforms.RandomResizedCrop(224),
@@ -67,12 +63,10 @@ def create_loaders(batch_size=32, num_workers=2):
         ]),
     }
 
-    # Datasets
     train_dataset = CustomDataset(train_df, train_img_dir, transform_dict)
     val_dataset = CustomDataset(val_df, val_img_dir, transform_dict)
     test_dataset = CustomDataset(test_df, test_img_dir, transform_dict)
 
-    # Dataloaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     test_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
