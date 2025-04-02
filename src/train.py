@@ -124,23 +124,46 @@ class Trainer:
         self._plot_test_metrics(test_metrics)
 
     def _plot_test_metrics(self, test_metrics):
-        plt.figure(figsize=(6, 4))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
         classes = ["regular", "semi-nude", "full-nude"]
         cm = test_metrics["cm"]
+        im = ax1.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+        ax1.set_title("Test Confusion Matrix")
 
-        plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-        plt.title("Test Confusion Matrix")
-        plt.colorbar()
+        plt.colorbar(im, ax=ax1)
+
         tick_marks = range(len(classes))
-        plt.xticks(tick_marks, classes, rotation=45)
-        plt.yticks(tick_marks, classes)
+        ax1.set_xticks(tick_marks)
+        ax1.set_yticks(tick_marks)
+        ax1.set_xticklabels(classes, rotation=45)
+        ax1.set_yticklabels(classes)
 
+        thresh = cm.max() / 2.0
         for i in range(len(classes)):
             for j in range(len(classes)):
-                plt.text(j, i, cm[i, j], horizontalalignment="center", color="white" if cm[i, j] > cm.max() / 2. else "black")
+                ax1.text(j, i, cm[i, j],
+                        horizontalalignment="center",
+                        color="white" if cm[i, j] > thresh else "black")
 
-        plt.ylabel("True Label")
-        plt.xlabel("Predicted Label")
+        ax1.set_ylabel("True Label")
+        ax1.set_xlabel("Predicted Label")
+
+        metrics = ['Accuracy', 'F1 Score']
+        values = [test_metrics['accuracy'], test_metrics['f1']]
+
+        bars = ax2.bar(metrics, values)
+        ax2.set_ylim(0, 1.0)
+
+        ax2.set_title("Test Performance Metrics")
+        ax2.set_ylabel("Value")
+
+        for bar in bars:
+            height = bar.get_height()
+            ax2.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{height:.3f}',
+                    ha='center', va='bottom')
+
         plt.tight_layout()
         plt.show()
 
